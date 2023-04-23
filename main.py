@@ -1,5 +1,6 @@
 
-# the codebase for Athena is based on https://github.com/microsoft/CodeBERT/import os
+# the codebase for Athena is based on https://github.com/microsoft/CodeBERT/
+import os
 import sys
 import torch
 import copy
@@ -27,6 +28,12 @@ from parser import (remove_comments_and_docstrings,
                    tree_to_variable_index)
 from model import CodeBERTModel, GraphCodeBERTModel, UniXcoderModel
 
+
+#load parsers
+LANGUAGE = Language('parser/my-languages.so', 'java')        
+parser = Parser()
+parser.set_language(LANGUAGE) 
+parser_gcb = [parser,DFG_java] 
 
 def convert_examples_to_features_cb(item, model):
     code = remove_comments_and_docstrings(item,lang)
@@ -234,22 +241,19 @@ def main():
                         help="the path of the downloaded projects by using GitHub URL from the dataset")    
     parser.add_argument("--model_name_or_path", default='microsoft/codebert-base', type=str,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--finetuned_model_path", default='/yyan/work/athena/CodeBERT/CodeXGLUE/Text-Code/NL-code-search-CSN/saved_models/java/reproduction/checkpoint-best-mrr/model.bin', type=str,
+    parser.add_argument("--finetuned_model_path", default='', type=str,
                         help="The model checkpoint for weights initialization.")
 
     args = parser.parse_args()
 
-    LANGUAGE = Language('parser/my-languages.so', 'java')        
-    parser = Parser()
-    parser.set_language(LANGUAGE) 
-    parser_gcb = [parser,DFG_java] 
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     config = RobertaConfig.from_pretrained(args.model_name_or_path)
     tokenizer = RobertaTokenizer.from_pretrained(args.model_name_or_path)
     model = RobertaModel.from_pretrained(args.model_name_or_path)     
-    model = Model(model)
-    model.load_state_dict(torch.load(MODEL_PATH),strict=False)
+    model = CodeBERTModel(model)
+    model.load_state_dict(torch.load(args.finetuned_model_path),strict=False)
     model.to(device)
 
 
@@ -372,7 +376,7 @@ def main():
                             "hit@10": hit_10[i],
                             "ground truth size": grd_truth_size[i] - 1,
                             "inner corpus size": len(file_idxes[i]) - 1,
-                            "outer corpus size" all_distances.shape[1] - len(file_idxes[i]),
+                            "outer corpus size": all_distances.shape[1] - len(file_idxes[i]),
                             "repo size": all_distances.shape[1] 
                         })                 
                 results_csv = pd.DataFrame(results[level])

@@ -7,7 +7,7 @@ import torch
     
 class CodeBERTModel(nn.Module):   
     def __init__(self, encoder):
-        super(Model, self).__init__()
+        super(CodeBERTModel, self).__init__()
         self.encoder = encoder
       
     def forward(self, code_inputs=None, nl_inputs=None): 
@@ -19,7 +19,7 @@ class CodeBERTModel(nn.Module):
 
 class GraphCodeBERTModel(nn.Module):   
     def __init__(self, encoder):
-        super(Model, self).__init__()
+        super(GraphCodeBERTModel, self).__init__()
         self.encoder = encoder
       
     def forward(self, code_inputs=None, attn_mask=None,position_idx=None, nl_inputs=None): 
@@ -38,7 +38,7 @@ class GraphCodeBERTModel(nn.Module):
 
 class UniXcoderModel(nn.Module):   
     def __init__(self, encoder):
-        super(Model, self).__init__()
+        super(UniXcoderModel, self).__init__()
         self.encoder = encoder
       
     def forward(self, code_inputs=None, nl_inputs=None): 
