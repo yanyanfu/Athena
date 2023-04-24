@@ -1,8 +1,9 @@
+import call_graph
 import os
 
 from abc import ABC, abstractmethod
-from tkinter import N
 from tree_sitter import Language, Parser
+
 
 class CallParser():
     __metaclass__ = ABC
@@ -91,10 +92,14 @@ class CallParser():
         return file_to_search.replace(".", os.sep) + self.extension
 
 
+class CppParser(CallParser):
+    pass
+
+
 class JavaParser(CallParser):
     language = 'java'
     extension = '.java'
-    language_library = Language('../parser/my-languages.so', 'java')
+    language_library = Language('call_graph/my-languages.so', 'java')
     PARSER = Parser()
     PARSER.set_language(language_library)
     method_import_q = language_library.query("""
@@ -199,8 +204,7 @@ class JavaParser(CallParser):
                         cur_node = cur_node.parent
 
         except Exception as e:
-            pass
-            
+            print(e)
         return (class_name, method_name, nargs)
 
     def get_method_print(self, method):
@@ -208,3 +212,7 @@ class JavaParser(CallParser):
         nparams = (len(method.child_by_field_name('parameters').children) - 1) // 2
 
         return (name, nparams)
+
+
+class PythonParser(CallParser):
+    pass

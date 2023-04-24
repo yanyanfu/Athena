@@ -1,8 +1,10 @@
-import sys
 import git
 import os
-from parsers import JavaParser
+
 from pandas import DataFrame
+from pathlib import Path
+
+import call_graph.parsers as parsers
 
 
 def reset_graph():
@@ -19,6 +21,21 @@ def reset_graph():
         'callee_index': [],
         'called_index': []
     }
+
+
+# From: https://github.com/github/CodeSearchNet/tree/master/function_parser
+def traverse(
+    node,       # tree-sitter node
+    results,    # list to append results to
+) -> None:
+    """Traverse in a recursive way, a tree-sitter node and append results to a list."""
+    if node.type == 'string':
+        results.append(node)
+        return
+    for n in node.children:
+        traverse(n, results)
+    if not node.children:
+        results.append(node)
 
 
 def get_docstring_method_pairs(root_node):
@@ -39,7 +56,7 @@ def get_docstring_method_pairs(root_node):
     return docstring_method_pairs
 
 
-def add_methods_and_imports(dir_path, include_docstrings=True):
+def add_methods_and_imports(dir_path, include_docstrings=False):
     tree = lang.PARSER.parse(bytes(lang.src_code, "utf8"))
     query = lang.method_import_q
     captures = query.captures(tree.root_node)
@@ -89,13 +106,13 @@ def add_methods_and_imports(dir_path, include_docstrings=True):
                 if os.path.exists(import_path):
                     file_list.append(import_path)
                     continue
-            walk = os.walk(dir_path)
-            for subdir,_,_ in walk:
-                if '/test/' in subdir + '/':
+
+            paths = Path(dir_path).rglob(file_to_search)
+            for path in paths:
+                if '/test/' in str(path) + '/':
                     continue
-                search_path = os.path.join(subdir,file_to_search)
-                if os.path.exists(search_path):
-                    file_list.append(search_path)
+                if path.exists():
+                    file_list.append(str(path))
                     break
         except Exception as e:
             pass
@@ -147,25 +164,37 @@ def add_edges():
                                     break
                     break
 
-
+# Cell
 def set_language(language):
     global lang
-    lang = JavaParser()
+    if language == 'python':
+        lang = parsers.PythonParser()
+    elif language == 'java':
+        lang = parsers.JavaParser()
+    elif language == 'cpp':
+        lang = parsers.CppParser()
 
 
-def parse_directory(dir_path, include_docstring=True) -> DataFrame:
+# Cell
+def parse_directory(dir_path, include_docstring=False) -> DataFrame:
     reset_graph()
-    walk = os.walk(dir_path)
-    for subdir,_,files in walk:
-        if '/test/' in subdir + '/':
+    try:
+        if lang is None:
+            pass
+    except NameError:
+        exit_with_message("No language specified")
+    if not os.path.isdir(dir_path):
+        exit_with_message(f'Could not find directory: {dir_path}')
+
+    dir_path = Path(dir_path)
+    paths = dir_path.rglob(f'*{lang.extension}')
+    for path in paths:
+        if '/test/' in str(path) + '/':
             continue
-        for filename in files:
-            path = os.path.join(subdir,filename)
-            if filename.endswith(lang.extension):
-                lang.set_current_file(path)
-                add_methods_and_imports(dir_path, include_docstring)
+        lang.set_current_file(str(path))
+        add_methods_and_imports(str(dir_path), include_docstring)
     for path in file_dict:
-        lang.set_current_file(path)
+        lang.set_current_file(str(path))
         add_edges()
 
     return (
@@ -178,3 +207,7 @@ def parse_directory(dir_path, include_docstring=True) -> DataFrame:
         ),
         DataFrame(edge_dict)
     )
+
+def exit_with_message(message):
+    print(f"{message} Exiting...")
+    exit(1)

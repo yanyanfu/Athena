@@ -14,7 +14,7 @@ class CodeBERTModel(nn.Module):
         if code_inputs is not None:
             return self.encoder(code_inputs,attention_mask=code_inputs.ne(1))[1]
         else:
-            return self.encoder(nl_inputs,attention_mask=nl_inputs.ne(1))[1
+            return self.encoder(nl_inputs,attention_mask=nl_inputs.ne(1))[1]
 
 
 class GraphCodeBERTModel(nn.Module):   
