@@ -3,9 +3,9 @@
 ## Introduction
 This is the official codebase for the paper "Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis"
 
-## Data
+## Fine-tuned models
 
-All the data related to the benchmark and the approach itself is provided in [Zendo](https://).
+The pretrained models which are fine-tuned for code search is available here: https://drive.google.com/drive/folders/1nakEhOtRPdI35rgUYDbNY6OWSBSL1aCb
 
 ## Training Prerequisites
 - CUDA 11.0
