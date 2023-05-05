@@ -1,7 +1,7 @@
 import torch
+import numpy as np
 
 from abc import ABC, abstractmethod
-import numpy as np
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, TensorDataset
 from parser import DFG_java
 from parser import (remove_comments_and_docstrings,
@@ -66,23 +66,22 @@ class TextDataset(Dataset):
               torch.tensor(self.examples[item].position_idx))
 
 
-class embed(ABC):
+class Embed(ABC):
     def __init__(self, model_name, finetuned_model_path):
         super().__init__()
         LANGUAGE = Language('parser/my-languages.so', 'java')     
         parser = Parser()
         parser.set_language(LANGUAGE) 
-
         self.parser = [parser,DFG_java]
-        self.finetuned_model_path = finetuned_model_path
+        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        config = RobertaConfig.from_pretrained(model_name)
+        self.config = RobertaConfig.from_pretrained(model_name)
         self.tokenizer = RobertaTokenizer.from_pretrained(model_name)
         self.model = RobertaModel.from_pretrained(model_name)       
 
         self.code_length = 256
         self.data_flow_length = 64
-
+        self.finetuned_model_path = finetuned_model_path
 
     @abstractmethod
     def load_finetuned_model(self):
@@ -101,7 +100,7 @@ class embed(ABC):
         pass
 
 
-class embed_codebert(embed):
+class EmbedCodebert(Embed):
 
     def load_finetuned_model(self):
         self.model = CodeBERTModel(self.model)
@@ -147,7 +146,7 @@ class embed_codebert(embed):
         return corpus_vecs
 
 
-class embed_graphcodebert(embed):
+class EmbedGraphcodebert(Embed):
 
     def load_finetuned_model(self):
         self.model = GraphCodeBERTModel(self.model)
@@ -223,7 +222,7 @@ class embed_graphcodebert(embed):
         examples = []
         for method in methods:
             examples.append(self.convert_examples_to_features(method)) 
-        corpus_dataset=TextDataset(examples)
+        corpus_dataset=TextDataset(examples, self.code_length, self.data_flow_length)
         corpus_sampler = SequentialSampler(corpus_dataset)
         corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=128,num_workers=4)
 
@@ -241,7 +240,7 @@ class embed_graphcodebert(embed):
         return corpus_vecs
 
 
-class embed_unixcoder(embed):
+class EmbedUnixcoder(Embed):
 
     def load_finetuned_model(self):
         self.model = UniXcoderModel(self.model)

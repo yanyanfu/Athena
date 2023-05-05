@@ -1,4 +1,3 @@
-
 # the codebase for Athena is based on https://github.com/microsoft/CodeBERT/
 import os
 import torch
@@ -29,23 +28,30 @@ def clone_repo(dataset_csv, project_path):
                 print (e)
 
 
-def search_query(file_path, method_name, method_df):
+def search_query(file_path, method_name, method_df, lang):
     overload_idxes = []
     idxes = method_df.index[
         method_df.path == str(file_path)
     ].tolist()  
     for idx in idxes:
-        mtd = remove_comments_and_docstrings(method_df.method[idx],'java').split('\n')
+        mtd = remove_comments_and_docstrings(method_df.method[idx],lang).split('\n')
         for i in range(len(mtd)):
             if mtd[i].lstrip().startswith('@') or not mtd[i]:
                 continue
             if '(' not in mtd[i]:
                 mtd[i] += mtd[i+1]
             if method_name == mtd[i].split('(')[0].split()[-1].split('*/')[-1]:
-                print(method_name, end = ' ')
                 overload_idxes.append (idx)
             break 
     return overload_idxes, idxes
+
+
+def get_degree (adj):
+    degree = np.sum (adj, axis = 1)
+    for i in range(len(degree)):
+        if degree[i]:
+            degree[i] = 1 / np.sqrt(degree[i])  
+    return degree
 
 
 def get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, weight):
@@ -68,17 +74,10 @@ def get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, weight):
         adj[i][i] = 0
         adj_sec[i][i] = 0
 
-    degree = np.sum (adj, axis = 1)
-    for i in range(len(degree)):
-        if degree[i]:
-            degree[i] = 1 / np.sqrt(degree[i])  
-    degree_sec = np.sum (adj_sec, axis = 1)
-    for i in range(len(degree_sec)):
-        if degree_sec[i]:
-            degree_sec[i] = 1 / np.sqrt(degree_sec[i]) 
+    degree = get_degree(adj)
+    degree_sec = get_degree(adj_sec) 
     adj = np.matmul(np.matmul(np.diag(degree), adj * weight), np.diag(degree)) + np.identity(corpus_size)
-    adj += np.matmul(np.matmul(np.diag(degree_sec), adj_sec * weight), np.diag(degree_sec))
-    
+    adj += np.matmul(np.matmul(np.diag(degree_sec), adj_sec * weight), np.diag(degree_sec))  
     return adj  
 
 
@@ -113,60 +112,71 @@ def calculate_metric(all_distances, distances):
 def main():
     parser = argparse.ArgumentParser()
 
-    ## Required parameters
+    # Required arguments
     parser.add_argument("--project_path", default='../athena_reproduction_package/projects', type=str,
                         help="the path of the downloaded projects by using GitHub URL from the dataset")    
     parser.add_argument("--pretrained_model_name", default='microsoft/codebert-base', type=str,
                         help="The model checkpoint for weights initialization.")
     parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/codebert.bin', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
+    parser.add_argument("--lang", default='java', type=str,
+                        help="The programming language for parsing")
+    parser.add_argument('--output_dir', default='./results/', help='Path where to save results.')
     parser.add_argument("--weight", default=0.5, type=float,
-                        help="thw weight used to balance the method and its neighbot method information")
+                        help="The weight used to balance the method and its neighbor method information")
     parser.add_argument("--MAX", default=10000, type=int,
                         help="The model checkpoint for weights initialization.")
+    parser.add_argument("--version", default='baseline', type=str,
+                        help="The version used to obtain the results: athena or baseline")
     args = parser.parse_args()
 
-    if args.pretrained_model_name == 'microsoft/codebert-base':
-        embed = extractor.embed_codebert(args.pretrained_model_name, args.finetuned_model_path)
-    elif args.pretrained_model_name == 'microsoft/graphcodebert-base':
-        embed = extractor.embed_graphcodebert(args.pretrained_model_name, args.finetuned_model_path)
-    else:
-        embed = extractor.embed_unixcoder(args.pretrained_model_name, args.finetuned_model_path)    
-    embed.load_finetuned_model()       
-
+    # read the dataset and clone the repositories
     dataset_csv = pd.read_csv('./dataset/alexandria.csv')
     clone_repo(dataset_csv, args.project_path)
     dataset = defaultdict(lambda: defaultdict(list))
     for _, row in dataset_csv.iterrows():  
         dataset[row['repo']][row['parent_commit']].append(
-            row['file_path'] + '<SPLIT>' + row['method_name']
+            row['file_path'] + '<sep>' + row['method_name']
         )
-    
+
+    # load the fine-tuned model
+    if args.pretrained_model_name == 'microsoft/codebert-base':
+        embed = extractor.EmbedCodebert(args.pretrained_model_name, args.finetuned_model_path)
+    elif args.pretrained_model_name == 'microsoft/graphcodebert-base':
+        embed = extractor.EmbedGraphcodebert(args.pretrained_model_name, args.finetuned_model_path)
+    else:
+        embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path)    
+    embed.load_finetuned_model() 
+
     results = [[] for i in range(3)]
+    output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1])
+    os.makedirs(output_dir, exist_ok=True)
+
+    ## obtain the results for each query in the co-changed methods
     for repo in tqdm(dataset):
-        for parent_commit in tqdm(dataset[repo]):                                         
+        for parent_commit in tqdm(dataset[repo]): 
+            # build the call graph                                        
             repo_path = Path(args.project_path) / repo
             repo_cg = data.SoftwareRepo(repo_path, parent_commit)
             method_df = repo_cg.method_df
             src_nodes = repo_cg.call_edge_df.from_id.values
             trgt_nodes = repo_cg.call_edge_df.to_id.values
             
-            corpus_vecs = embed.extract_corpus_vecs(method_df.method.values)
-
-            # store indexes of query methods. Two-dimensional list to handle overload methods
-            query_overload_idxes, file_idxes = [], []
-            method_names, file_paths = [], []
+            # store indexes of query methods. Two-dimensional list to handle overloaded methods
+            query_overload_idxes, file_idxes, method_path = [], [], []
             for path_line in dataset[repo][parent_commit]:
-                path = path_line.split('<SPLIT>')
-                file_path, method_name = path[0], path[1]
-                overload_idxes, idxes = search_query (repo_path / file_path, method_name, method_df)
+                path = path_line.split('<sep>')
+                overload_idxes, idxes = search_query (repo_path / path[0], path[1], method_df, args.lang)
                 if overload_idxes:
                     query_overload_idxes.append(overload_idxes)
                     file_idxes.append(idxes)
+                    method_path.append(os.path.join(path[0], path[1]))
 
-            query_size, corpus_size, edge_size = len(query_overload_idxes), len(corpus_vecs), len(src_nodes)
-            adj = get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, args.weight)                                            
-            corpus_vecs = np.matmul(adj, corpus_vecs)                
+            corpus_vecs = embed.extract_corpus_vecs(method_df.method.values)
+            query_size, corpus_size, edge_size = len(query_overload_idxes), len(corpus_vecs), len(src_nodes)                                                  
+            if args.version == 'athena':
+                adj = get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, args.weight) 
+                corpus_vecs = np.matmul(adj, corpus_vecs)                
             query_vecs = np.zeros ([query_size, corpus_vecs.shape[1]])              
             for i in range(query_size):
                 query_vecs[i] = corpus_vecs[query_overload_idxes[i][0]]      
@@ -203,17 +213,18 @@ def main():
                         results[level].append({
                             "repo": repo,
                             "parent commit": parent_commit,
+                            "method path": method_path[i],
                             "rank": rank[i],
                             "RR": rr[i],
                             "AP": avep[i],
                             "hit@10": hit_10[i],
-                            "ground truth size": grd_truth_size[i] - 1,
+                            "ground truth size": grd_truth_size[i],
                             "inner corpus size": len(file_idxes[i]) - 1,
                             "outer corpus size": all_distances.shape[1] - len(file_idxes[i]),
                             "repo size": all_distances.shape[1] 
                         })                 
                 results_csv = pd.DataFrame(results[level])
-                write_path = './results_' + str(level+1) + '.csv'
+                write_path = os.path.join(output_dir, 'results_' + str(level+1) + '.csv')
                 results_csv.to_csv(write_path, index=False)                             
 
 

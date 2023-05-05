@@ -8,10 +8,9 @@ from pathlib import Path
 from tree_sitter import Language
 
 
-LANG = "java"
-gg.set_language(LANG)
+gg.set_language("java")
 
-# Cell
+
 class SoftwareRepo:
     def __init__(self, repo_dir, commit, n=None):
         self.repo_dir = repo_dir
