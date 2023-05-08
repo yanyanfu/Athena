@@ -22,13 +22,15 @@ pip install -r requirements.txt
 
 ## Reproduce Results
 
+```bash
 python main.py \
-    --project_path = ./projects \
-    --pretrained_model_name = microsoft/graphcodebert-base \
-    --finetuned_model_path = ./athena_reproduction_package/finetuned_models/graphcodebert.bin \
-    --lang = java \
-    --output_dir = ./results \
-    --version = athena \
+    --project_path=./projects \
+    --pretrained_model_name=microsoft/graphcodebert-base \
+    --finetuned_model_path=./finetuned_models/graphcodebert.bin \
+    --lang=java \
+    --output_dir=./results \
+    --version=athena
+```
 
 Our results for each model are available here: https://drive.google.com/drive/folders/1IK5-eRpLPvQIRgHJUfI5t8FNYMAuilsX
 
