@@ -32,3 +32,5 @@ python main.py \
     --version=athena
 ```
 
+Our results are available at the results folder
+
