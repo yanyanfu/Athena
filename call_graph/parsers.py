@@ -137,7 +137,6 @@ class JavaParser(CallParser):
             """)
 
     def get_call_print(self, node):
-        # gets the name of the method call
         try:
             object_name, class_name = None, None
             class_node, class_new_node = None, None
@@ -204,7 +203,8 @@ class JavaParser(CallParser):
                         cur_node = cur_node.parent
 
         except Exception as e:
-            print(e)
+            pass
+        
         return (class_name, method_name, nargs)
 
     def get_method_print(self, method):

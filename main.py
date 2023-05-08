@@ -1,7 +1,6 @@
 # the codebase for Athena is based on https://github.com/microsoft/CodeBERT/
 import os
 import torch
-import copy
 import argparse
 
 import data
@@ -16,7 +15,8 @@ from collections import defaultdict
 from scipy.spatial.distance import cdist
 from parser import remove_comments_and_docstrings
 from typing import List, Dict, Any, Set, Optional
-       
+
+
 def clone_repo(dataset_csv, project_path):
     for _, row in dataset_csv.iterrows():
         repo_path = Path(project_path) / row['repo']
@@ -115,9 +115,9 @@ def main():
     # Required arguments
     parser.add_argument("--project_path", default='../athena_reproduction_package/projects', type=str,
                         help="the path of the downloaded projects by using GitHub URL from the dataset")    
-    parser.add_argument("--pretrained_model_name", default='microsoft/codebert-base', type=str,
+    parser.add_argument("--pretrained_model_name", default='microsoft/graphcodebert-base', type=str,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/codebert.bin', type=str,
+    parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/graphcodebert.bin', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
     parser.add_argument("--lang", default='java', type=str,
                         help="The programming language for parsing")
@@ -126,7 +126,7 @@ def main():
                         help="The weight used to balance the method and its neighbor method information")
     parser.add_argument("--MAX", default=10000, type=int,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--version", default='baseline', type=str,
+    parser.add_argument("--version", default='athena', type=str,
                         help="The version used to obtain the results: athena or baseline")
     args = parser.parse_args()
 
@@ -149,9 +149,6 @@ def main():
     embed.load_finetuned_model() 
 
     results = [[] for i in range(3)]
-    output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1])
-    os.makedirs(output_dir, exist_ok=True)
-
     ## obtain the results for each query in the co-changed methods
     for repo in tqdm(dataset):
         for parent_commit in tqdm(dataset[repo]): 
@@ -183,18 +180,18 @@ def main():
                 
             # calculate query-grd_truth distances and query-corpus distances
             all_distances_origin = cdist (query_vecs, corpus_vecs, metric = 'cosine')                             
-            for level in range(3):
-                all_distances = copy.deepcopy (all_distances_origin)                
+            for setting in range(3):
+                all_distances = np.copy (all_distances_origin)                
                 distances = np.zeros ([query_size, query_size])
                 for i in range(query_size):                          
                     # set the distance between the query and itself to MAX value
                     for idx in query_overload_idxes[i]:
                         all_distances[i][idx] = args.MAX
-                    if level == 1:
+                    if setting == 1:
                         for idx in range(corpus_size):
                             if idx not in file_idxes[i]:
                                 all_distances[i][idx] = args.MAX
-                    elif level == 2:
+                    elif setting == 2:
                         for idx in file_idxes[i]:
                             all_distances[i][idx] = args.MAX
                     for j in range(query_size):
@@ -210,7 +207,7 @@ def main():
                 rank, rr, avep, hit_10, grd_truth_size = calculate_metric(all_distances, distances)
                 for i in range(query_size):
                     if rank[i] != corpus_size:
-                        results[level].append({
+                        results[setting].append({
                             "repo": repo,
                             "parent commit": parent_commit,
                             "method path": method_path[i],
@@ -219,13 +216,18 @@ def main():
                             "AP": avep[i],
                             "hit@10": hit_10[i],
                             "ground truth size": grd_truth_size[i],
-                            "inner corpus size": len(file_idxes[i]) - 1,
+                            "inner corpus size": len(file_idxes[i]) - len(query_overload_idxes[i]),
                             "outer corpus size": all_distances.shape[1] - len(file_idxes[i]),
                             "repo size": all_distances.shape[1] 
-                        })                 
-                results_csv = pd.DataFrame(results[level])
-                write_path = os.path.join(output_dir, 'results_' + str(level+1) + '.csv')
-                results_csv.to_csv(write_path, index=False)                             
+                        })
+
+
+                output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1], args.version)
+                os.makedirs(output_dir, exist_ok=True)                   
+                for setting in range(3):
+                    results_csv = pd.DataFrame(results[setting])
+                    write_path = os.path.join(output_dir, 'results_' + str(setting+1) + '.csv')
+                    results_csv.to_csv(write_path, index=False)                             
 
 
 if __name__ == "__main__":

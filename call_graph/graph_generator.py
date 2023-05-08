@@ -133,18 +133,22 @@ def add_edges():
             if not call_name[0]:
                 continue
             for file in imports:
+                # locate the target file containing the callee method
                 if file.split('/')[-1][:-5] == call_name[0]:
                     rang = file_dict[file][1]
                     flag = 0
                     for jindex in range(rang[0], rang[1]):
                         method_name = method_dict['prints'][jindex]
+                        # find the callee method in the current file
                         if call_name[1:] == method_name:
                             edge_dict['callee_index'].append(index)
                             edge_dict['called_index'].append(jindex)
                             flag = 1
+                    # futher search for the callee method in the superclass
                     if not flag:
                         superclass = ''
                         root_node = file_dict[file][2]
+                        # obtain the name of the superclass
                         for child in root_node.children:
                             if child.type == 'class_declaration':
                                 if child.child_by_field_name('superclass'):
@@ -164,7 +168,7 @@ def add_edges():
                                     break
                     break
 
-# Cell
+
 def set_language(language):
     global lang
     if language == 'python':
@@ -175,7 +179,6 @@ def set_language(language):
         lang = parsers.CppParser()
 
 
-# Cell
 def parse_directory(dir_path, include_docstring=False) -> DataFrame:
     reset_graph()
     try:
@@ -207,6 +210,7 @@ def parse_directory(dir_path, include_docstring=False) -> DataFrame:
         ),
         DataFrame(edge_dict)
     )
+
 
 def exit_with_message(message):
     print(f"{message} Exiting...")
