@@ -10,7 +10,7 @@ This is the official codebase for the paper "Combining Call Graphs and Neural Co
 - torchvision 0.8.2
 
 ## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models can be found here: https://drive.google.com/drive/folders/1nakEhOtRPdI35rgUYDbNY6OWSBSL1aCb
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models can be found here
 
 ## Installation
 
@@ -31,6 +31,4 @@ python main.py \
     --output_dir=./results \
     --version=athena
 ```
-
-Our results for each model are available here: https://drive.google.com/drive/folders/1IK5-eRpLPvQIRgHJUfI5t8FNYMAuilsX
 
