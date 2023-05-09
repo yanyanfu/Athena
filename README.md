@@ -18,6 +18,9 @@ cd athena
 pip install -r requirements.txt
 ```
 
+## Evaluation Benchmark
+To evaluate Athena for the task of impact analysis, we created a large-scale benchmark, called Alexandria, that leverages an existing dataset of fine-grained, manually untangled commit information from bug-fixes. The benchmark consists of 910 commits across 25 open-source Java projects, which we use to construct 4,405 IA tasks. The benchmark is available at https://anonymous.4open.science/r/Athena-6557/dataset/alexandria.csv.
+
 ## Reproduce Results
 
 ```bash
@@ -30,9 +33,9 @@ python main.py \
     --version=athena
 ```
 
-Our results can be found at https://anonymous.4open.science/r/Athena-6557/results/, and the dataset is available at https://anonymous.4open.science/r/Athena-6557/dataset/alexandria.csv
+Our results can be found at https://anonymous.4open.science/r/Athena-6557/results/.
 
 
 ## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models will be available soon
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models will be available soon.
 
