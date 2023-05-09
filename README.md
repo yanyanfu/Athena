@@ -1,7 +1,7 @@
 # Athena: Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis
 
 ## Introduction
-This is the official codebase for the paper "Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis". In this work, we use three large pre-trained models, namely CodeBERT, GraphCodeBERT and UniXcoder, to obtain the neural semantics of the code and adpot an embedding propogation strategy based on the call graph information to update the code semantics for accurate impact analysis
+This is the official codebase for the paper "Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis". In this work, we use three large pre-trained models, namely CodeBERT, GraphCodeBERT and UniXcoder, to obtain the neural semantics of the code and adpot an embedding propogation strategy based on the call graph information to update the code semantics for accurate impact analysis.
 
 ## Dependency
 - CUDA 11.0
@@ -9,8 +9,6 @@ This is the official codebase for the paper "Combining Call Graphs and Neural Co
 - pytorch 1.7.1
 - torchvision 0.8.2
 
-## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models can be found here
 
 ## Installation
 
@@ -32,5 +30,9 @@ python main.py \
     --version=athena
 ```
 
-Our results are available at the results folder
+Our results can be found at https://anonymous.4open.science/r/Athena-6557/results/, and the dataset is available at https://anonymous.4open.science/r/Athena-6557/dataset/alexandria.csv
+
+
+## Fine-tuned models
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models will be available soon
 

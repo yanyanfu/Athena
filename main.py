@@ -222,12 +222,12 @@ def main():
                         })
 
 
-                output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1], args.version)
-                os.makedirs(output_dir, exist_ok=True)                   
-                for setting in range(3):
-                    results_csv = pd.DataFrame(results[setting])
-                    write_path = os.path.join(output_dir, 'results_' + str(setting+1) + '.csv')
-                    results_csv.to_csv(write_path, index=False)                             
+    output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1], args.version)
+    os.makedirs(output_dir, exist_ok=True)                   
+    for setting in range(3):
+        results_csv = pd.DataFrame(results[setting])
+        write_path = os.path.join(output_dir, 'results_' + str(setting+1) + '.csv')
+        results_csv.to_csv(write_path, index=False)                             
 
 
 if __name__ == "__main__":
