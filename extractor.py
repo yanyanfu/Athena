@@ -81,7 +81,12 @@ class Embed(ABC):
 
         self.code_length = 256
         self.data_flow_length = 64
+        self.batch_size = 128
         self.finetuned_model_path = finetuned_model_path
+
+    @abstractmethod
+    def load_pretrained_model(self):
+        pass
 
     @abstractmethod
     def load_finetuned_model(self):
@@ -102,10 +107,13 @@ class Embed(ABC):
 
 class EmbedCodebert(Embed):
 
-    def load_finetuned_model(self):
+    def load_pretrained_model(self):
         self.model = CodeBERTModel(self.model)
-        self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
         self.model.to(self.device)
+
+    def load_finetuned_model(self):
+        self.load_pretrained_model()
+        self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
 
     def preprocess(self, code):
         code=remove_comments_and_docstrings(code,'java')  
@@ -132,7 +140,7 @@ class EmbedCodebert(Embed):
             corpus_inputs.append(self.convert_examples_to_features(method))
         corpus_dataset = TensorDataset(torch.tensor(corpus_inputs))
         corpus_sampler = SequentialSampler(corpus_dataset)
-        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=128,num_workers=4)
+        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
         self.model.eval()
         query_vecs=[] 
         corpus_vecs=[]
@@ -148,10 +156,13 @@ class EmbedCodebert(Embed):
 
 class EmbedGraphcodebert(Embed):
 
-    def load_finetuned_model(self):
+    def load_pretrained_model(self):
         self.model = GraphCodeBERTModel(self.model)
-        self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
         self.model.to(self.device)
+
+    def load_finetuned_model(self):
+        self.load_pretrained_model()
+        self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
  
     def preprocess(self, code):
         try:
@@ -224,7 +235,7 @@ class EmbedGraphcodebert(Embed):
             examples.append(self.convert_examples_to_features(method)) 
         corpus_dataset=TextDataset(examples, self.code_length, self.data_flow_length)
         corpus_sampler = SequentialSampler(corpus_dataset)
-        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=128,num_workers=4)
+        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
 
         self.model.eval() 
         corpus_vecs=[]
@@ -242,11 +253,14 @@ class EmbedGraphcodebert(Embed):
 
 class EmbedUnixcoder(Embed):
 
-    def load_finetuned_model(self):
+    def load_pretrained_model(self):
         self.model = UniXcoderModel(self.model)
+        self.model.to(self.device)
+
+    def load_finetuned_model(self):
+        self.load_pretrained_model()
         model_to_load = self.model.module if hasattr(self.model, 'module') else self.model 
         model_to_load.load_state_dict(torch.load(self.finetuned_model_path))
-        self.model.to(self.device)
 
     def preprocess(self, code):
         code=remove_comments_and_docstrings(code,'java')  
@@ -274,7 +288,7 @@ class EmbedUnixcoder(Embed):
             corpus_inputs.append(self.convert_examples_to_features(method))
         corpus_dataset = TensorDataset(torch.tensor(corpus_inputs))
         corpus_sampler = SequentialSampler(corpus_dataset)
-        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=128,num_workers=4)
+        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
         self.model.eval()
         query_vecs=[] 
         corpus_vecs=[]

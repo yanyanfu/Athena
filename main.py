@@ -1,6 +1,7 @@
 # the codebase for Athena is based on https://github.com/microsoft/CodeBERT/
 import os
 import torch
+import copy
 import argparse
 
 import data
@@ -15,7 +16,7 @@ from collections import defaultdict
 from scipy.spatial.distance import cdist
 from parser import remove_comments_and_docstrings
 from typing import List, Dict, Any, Set, Optional
-
+       
 
 def clone_repo(dataset_csv, project_path):
     for _, row in dataset_csv.iterrows():
@@ -54,31 +55,50 @@ def get_degree (adj):
     return degree
 
 
-def get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, weight):
-    adj, adj_sec = np.zeros ([corpus_size, corpus_size]), np.zeros ([corpus_size, corpus_size])
+def get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, weight, nebr_num):
+    adj = np.zeros ([corpus_size, corpus_size])
+    adj_sec = np.zeros ([corpus_size, corpus_size])
+    adj_third = np.zeros ([corpus_size, corpus_size])
     for i in range(corpus_size):
-        direct_nebr = set()
+        direct_nebr, second_nebr = set(), set()
         for j in range(len(src_nodes)):
             if i == src_nodes[j]:
                 adj[i][trgt_nodes[j]] = 1
                 direct_nebr.add(trgt_nodes[j])
             if i == trgt_nodes[j]:
                 adj[i][src_nodes[j]] = 1  
-                direct_nebr.add(src_nodes[j])
+                direct_nebr.add(src_nodes[j])                  
         for j in range(len(src_nodes)):
             for k in direct_nebr:
                 if k == src_nodes[j] and not adj[i][trgt_nodes[j]]:
                     adj_sec[i][trgt_nodes[j]] = 1
+                    second_nebr.add(trgt_nodes[j])
                 if k == trgt_nodes[j] and not adj[i][src_nodes[j]]:
                     adj_sec[i][src_nodes[j]] = 1
+                    second_nebr.add(src_nodes[j])
+        second_nebr = second_nebr - direct_nebr
+        cnt = 0
+        for j in range(len(src_nodes)):
+            for k in second_nebr:
+                if k == src_nodes[j] and not adj[i][trgt_nodes[j]] and not adj_sec[i][trgt_nodes[j]]:
+                    adj_third[i][trgt_nodes[j]] = 1
+                    cnt += 1
+                if k == trgt_nodes[j] and not adj[i][src_nodes[j]] and not adj_sec[i][src_nodes[j]]:
+                    adj_third[i][src_nodes[j]] = 1
+                    cnt += 1
+                if cnt > nebr_num:
+                    break
+            if cnt > nebr_num:
+                break
         adj[i][i] = 0
         adj_sec[i][i] = 0
+        adj_third[i][i] = 0
 
-    degree = get_degree(adj)
-    degree_sec = get_degree(adj_sec) 
+    degree, degree_sec, degree_third = get_degree(adj), get_degree(adj_sec), get_degree(adj_third)
     adj = np.matmul(np.matmul(np.diag(degree), adj * weight), np.diag(degree)) + np.identity(corpus_size)
-    adj += np.matmul(np.matmul(np.diag(degree_sec), adj_sec * weight), np.diag(degree_sec))  
-    return adj  
+    adj_sec = adj + np.matmul(np.matmul(np.diag(degree_sec), adj_sec * weight), np.diag(degree_sec))  
+    adj_third = adj_sec + np.matmul(np.matmul(np.diag(degree_third), adj_third * weight), np.diag(degree_third))
+    return adj, adj_sec, adj_third
 
 
 def calculate_metric(all_distances, distances):
@@ -113,11 +133,11 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Required arguments
-    parser.add_argument("--project_path", default='../athena_reproduction_package/projects', type=str,
+    parser.add_argument("--project_path", default='../athena_reproduction_package/projects_2', type=str,
                         help="the path of the downloaded projects by using GitHub URL from the dataset")    
-    parser.add_argument("--pretrained_model_name", default='microsoft/graphcodebert-base', type=str,
+    parser.add_argument("--pretrained_model_name", default='microsoft/unixcoder-base', type=str,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/graphcodebert.bin', type=str,
+    parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/unixcoder.bin', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
     parser.add_argument("--lang", default='java', type=str,
                         help="The programming language for parsing")
@@ -126,7 +146,9 @@ def main():
                         help="The weight used to balance the method and its neighbor method information")
     parser.add_argument("--MAX", default=10000, type=int,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--version", default='athena', type=str,
+    parser.add_argument("--nebr_num", default=30, type=int,
+                        help="# of third-order nebrs is taken into considerating")
+    parser.add_argument("--version", default='baseline', type=str,
                         help="The version used to obtain the results: athena or baseline")
     args = parser.parse_args()
 
@@ -148,7 +170,7 @@ def main():
         embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path)    
     embed.load_finetuned_model() 
 
-    results = [[] for i in range(3)]
+    results = [[] for i in range(12)]
     ## obtain the results for each query in the co-changed methods
     for repo in tqdm(dataset):
         for parent_commit in tqdm(dataset[repo]): 
@@ -170,28 +192,32 @@ def main():
                     method_path.append(os.path.join(path[0], path[1]))
 
             corpus_vecs = embed.extract_corpus_vecs(method_df.method.values)
-            query_size, corpus_size, edge_size = len(query_overload_idxes), len(corpus_vecs), len(src_nodes)                                                  
-            if args.version == 'athena':
-                adj = get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, args.weight) 
-                corpus_vecs = np.matmul(adj, corpus_vecs)                
-            query_vecs = np.zeros ([query_size, corpus_vecs.shape[1]])              
-            for i in range(query_size):
-                query_vecs[i] = corpus_vecs[query_overload_idxes[i][0]]      
-                
-            # calculate query-grd_truth distances and query-corpus distances
-            all_distances_origin = cdist (query_vecs, corpus_vecs, metric = 'cosine')                             
-            for setting in range(3):
-                all_distances = np.copy (all_distances_origin)                
+            query_size, corpus_size = len(query_overload_idxes), len(corpus_vecs)                                                 
+            adj, adj_sec, adj_third = get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, args.weight, args.nebr_num) 
+                                             
+            for level in range(12):
+                corpus_vecs_w = corpus_vecs
+                if level // 3 == 1:
+                    corpus_vecs_w = np.matmul(adj, corpus_vecs) 
+                elif level // 3 == 2:    
+                    corpus_vecs_w = np.matmul(adj_sec, corpus_vecs)  
+                elif level // 3 == 3: 
+                    corpus_vecs_w = np.matmul(adj_third, corpus_vecs)      
+                query_vecs = np.zeros ([query_size, corpus_vecs_w.shape[1]])              
+                for i in range(query_size):
+                    query_vecs[i] = corpus_vecs_w[query_overload_idxes[i][0]] 
+
+                all_distances = cdist (query_vecs, corpus_vecs_w, metric = 'cosine')                
                 distances = np.zeros ([query_size, query_size])
                 for i in range(query_size):                          
                     # set the distance between the query and itself to MAX value
                     for idx in query_overload_idxes[i]:
                         all_distances[i][idx] = args.MAX
-                    if setting == 1:
+                    if level % 3 == 1:
                         for idx in range(corpus_size):
                             if idx not in file_idxes[i]:
                                 all_distances[i][idx] = args.MAX
-                    elif setting == 2:
+                    elif level % 3 == 2:
                         for idx in file_idxes[i]:
                             all_distances[i][idx] = args.MAX
                     for j in range(query_size):
@@ -207,7 +233,7 @@ def main():
                 rank, rr, avep, hit_10, grd_truth_size = calculate_metric(all_distances, distances)
                 for i in range(query_size):
                     if rank[i] != corpus_size:
-                        results[setting].append({
+                        results[level].append({
                             "repo": repo,
                             "parent commit": parent_commit,
                             "method path": method_path[i],
@@ -219,15 +245,10 @@ def main():
                             "inner corpus size": len(file_idxes[i]) - len(query_overload_idxes[i]),
                             "outer corpus size": all_distances.shape[1] - len(file_idxes[i]),
                             "repo size": all_distances.shape[1] 
-                        })
-
-
-    output_dir = os.path.join(args.output_dir, args.pretrained_model_name.split('/')[1], args.version)
-    os.makedirs(output_dir, exist_ok=True)                   
-    for setting in range(3):
-        results_csv = pd.DataFrame(results[setting])
-        write_path = os.path.join(output_dir, 'results_' + str(setting+1) + '.csv')
-        results_csv.to_csv(write_path, index=False)                             
+                        })                 
+                results_csv = pd.DataFrame(results[level])
+                write_path = os.path.join('./results/unixcoder/finetune', 'results_' + str(level+1) + '.csv')
+                results_csv.to_csv(write_path, index=False)                             
 
 
 if __name__ == "__main__":
