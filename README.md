@@ -36,7 +36,7 @@ To evaluate Athena for the task of impact analysis, we created a large-scale ben
 ## Reproduce Results
 
 ```bash
-python main.py \
+python main_multi.py \
     --project_path=./projects \
     --pretrained_model_name=microsoft/graphcodebert-base \
     --finetuned_model_path=./finetuned_models/graphcodebert.bin \
