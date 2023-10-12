@@ -3,6 +3,7 @@ import os
 import torch
 import copy
 import argparse
+import json
 
 import data
 import extractor
@@ -16,7 +17,17 @@ from collections import defaultdict
 from scipy.spatial.distance import cdist
 from parser import remove_comments_and_docstrings
 from typing import List, Dict, Any, Set, Optional
-       
+from tree_sitter import Language, Parser
+from parser import (remove_comments_and_docstrings,
+                   tree_to_token_index,
+                   index_to_code_token)
+
+from gensim.corpora import Dictionary
+from gensim.models.doc2vec import Doc2Vec
+from gensim import similarities
+import gensim.downloader as api
+from gensim.models import KeyedVectors
+
 
 def clone_repo(dataset_csv, project_path):
     for _, row in dataset_csv.iterrows():
@@ -47,58 +58,15 @@ def search_query(file_path, method_name, method_df, lang):
     return overload_idxes, idxes
 
 
-def get_degree (adj):
-    degree = np.sum (adj, axis = 1)
-    for i in range(len(degree)):
-        if degree[i]:
-            degree[i] = 1 / np.sqrt(degree[i])  
-    return degree
-
-
-def get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, weight, nebr_num):
-    adj = np.zeros ([corpus_size, corpus_size])
-    adj_sec = np.zeros ([corpus_size, corpus_size])
-    adj_third = np.zeros ([corpus_size, corpus_size])
-    for i in range(corpus_size):
-        direct_nebr, second_nebr = set(), set()
-        for j in range(len(src_nodes)):
-            if i == src_nodes[j]:
-                adj[i][trgt_nodes[j]] = 1
-                direct_nebr.add(trgt_nodes[j])
-            if i == trgt_nodes[j]:
-                adj[i][src_nodes[j]] = 1  
-                direct_nebr.add(src_nodes[j])                  
-        for j in range(len(src_nodes)):
-            for k in direct_nebr:
-                if k == src_nodes[j] and not adj[i][trgt_nodes[j]]:
-                    adj_sec[i][trgt_nodes[j]] = 1
-                    second_nebr.add(trgt_nodes[j])
-                if k == trgt_nodes[j] and not adj[i][src_nodes[j]]:
-                    adj_sec[i][src_nodes[j]] = 1
-                    second_nebr.add(src_nodes[j])
-        second_nebr = second_nebr - direct_nebr
-        cnt = 0
-        for j in range(len(src_nodes)):
-            for k in second_nebr:
-                if k == src_nodes[j] and not adj[i][trgt_nodes[j]] and not adj_sec[i][trgt_nodes[j]]:
-                    adj_third[i][trgt_nodes[j]] = 1
-                    cnt += 1
-                if k == trgt_nodes[j] and not adj[i][src_nodes[j]] and not adj_sec[i][src_nodes[j]]:
-                    adj_third[i][src_nodes[j]] = 1
-                    cnt += 1
-                if cnt > nebr_num:
-                    break
-            if cnt > nebr_num:
-                break
-        adj[i][i] = 0
-        adj_sec[i][i] = 0
-        adj_third[i][i] = 0
-
-    degree, degree_sec, degree_third = get_degree(adj), get_degree(adj_sec), get_degree(adj_third)
-    adj = np.matmul(np.matmul(np.diag(degree), adj * weight), np.diag(degree)) + np.identity(corpus_size)
-    adj_sec = adj + np.matmul(np.matmul(np.diag(degree_sec), adj_sec * weight), np.diag(degree_sec))  
-    adj_third = adj_sec + np.matmul(np.matmul(np.diag(degree_third), adj_third * weight), np.diag(degree_third))
-    return adj, adj_sec, adj_third
+def convert_examples_to_features_code(item, parser, lang):
+    code = remove_comments_and_docstrings(item,lang)
+    tree = parser.parse(bytes(code,'utf8'))    
+    root_node = tree.root_node  
+    tokens_index = tree_to_token_index(root_node)     
+    code = code.split('\n')
+    code_tokens_tmp = [index_to_code_token(x,code) for x in tokens_index]
+    code_tokens_tmp = [x for x in code_tokens_tmp if x]
+    return code_tokens_tmp
 
 
 def calculate_metric(all_distances, distances):
@@ -126,22 +94,23 @@ def calculate_metric(all_distances, distances):
                 break
             p_list.append((j+1)/sort_ranks[i][j])
             avep[i] = np.mean(p_list) if p_list else 0.0
-    return rank, rr, avep, hit_10, grd_truth_size
+    return rank, rr, avep, hit_10, sort_ranks, grd_truth_size
 
 
 def main():
+
     parser = argparse.ArgumentParser()
 
     # Required arguments
-    parser.add_argument("--project_path", default='../athena_reproduction_package/projects_2', type=str,
+    parser.add_argument("--project_path", default='./athena_reproduction_package/projects', type=str,
                         help="the path of the downloaded projects by using GitHub URL from the dataset")    
-    parser.add_argument("--pretrained_model_name", default='microsoft/unixcoder-base', type=str,
+    parser.add_argument("--pretrained_model_name", default='microsoft/graphcodebert-base', type=str,
                         help="The model checkpoint for weights initialization.")
-    parser.add_argument("--finetuned_model_path", default='../athena_reproduction_package/finetuned_models/unixcoder.bin', type=str,
+    parser.add_argument("--finetuned_model_path", default='./athena_reproduction_package/finetuned_models/doc2vec.model', type=str,
                         help="The model checkpoint after finetuned on the code search task.")
     parser.add_argument("--lang", default='java', type=str,
                         help="The programming language for parsing")
-    parser.add_argument('--output_dir', default='./results/', help='Path where to save results.')
+    parser.add_argument('--output_dir', default='./athena_reproduction_package/results/doc2vec', help='Path where to save results.')
     parser.add_argument("--weight", default=0.5, type=float,
                         help="The weight used to balance the method and its neighbor method information")
     parser.add_argument("--MAX", default=10000, type=int,
@@ -161,16 +130,11 @@ def main():
             row['file_path'] + '<sep>' + row['method_name']
         )
 
-    # load the fine-tuned model
-    if args.pretrained_model_name == 'microsoft/codebert-base':
-        embed = extractor.EmbedCodebert(args.pretrained_model_name, args.finetuned_model_path)
-    elif args.pretrained_model_name == 'microsoft/graphcodebert-base':
-        embed = extractor.EmbedGraphcodebert(args.pretrained_model_name, args.finetuned_model_path)
-    else:
-        embed = extractor.EmbedUnixcoder(args.pretrained_model_name, args.finetuned_model_path)    
-    embed.load_finetuned_model() 
+    LANGUAGE = Language('parser/my-languages.so', args.lang)        
+    parser_java = Parser()
+    parser_java.set_language(LANGUAGE) 
 
-    results = [[] for i in range(12)]
+    results = [[] for i in range(3)]
     ## obtain the results for each query in the co-changed methods
     for repo in tqdm(dataset):
         for parent_commit in tqdm(dataset[repo]): 
@@ -178,8 +142,6 @@ def main():
             repo_path = Path(args.project_path) / repo
             repo_cg = data.SoftwareRepo(repo_path, parent_commit)
             method_df = repo_cg.method_df
-            src_nodes = repo_cg.call_edge_df.from_id.values
-            trgt_nodes = repo_cg.call_edge_df.to_id.values
             
             # store indexes of query methods. Two-dimensional list to handle overloaded methods
             query_overload_idxes, file_idxes, method_path = [], [], []
@@ -191,23 +153,21 @@ def main():
                     file_idxes.append(idxes)
                     method_path.append(os.path.join(path[0], path[1]))
 
-            corpus_vecs = embed.extract_corpus_vecs(method_df.method.values)
-            query_size, corpus_size = len(query_overload_idxes), len(corpus_vecs)                                                 
-            adj, adj_sec, adj_third = get_noralimized_adjacency(src_nodes, trgt_nodes, corpus_size, args.weight, args.nebr_num) 
-                                             
-            for level in range(12):
-                corpus_vecs_w = corpus_vecs
-                if level // 3 == 1:
-                    corpus_vecs_w = np.matmul(adj, corpus_vecs) 
-                elif level // 3 == 2:    
-                    corpus_vecs_w = np.matmul(adj_sec, corpus_vecs)  
-                elif level // 3 == 3: 
-                    corpus_vecs_w = np.matmul(adj_third, corpus_vecs)      
-                query_vecs = np.zeros ([query_size, corpus_vecs_w.shape[1]])              
-                for i in range(query_size):
-                    query_vecs[i] = corpus_vecs_w[query_overload_idxes[i][0]] 
+            corpus_vecs = []         
+            model = Doc2Vec.load(args.finetuned_model_path) 
+            for mtd in method_df.method.values:
+                corpus_input = convert_examples_to_features_code(mtd, parser_java, args.lang)
+                corpus_vecs.append(model.infer_vector(corpus_input))
+            query_size, corpus_size = len(query_overload_idxes), len(corpus_vecs)
+            query_vecs = np.zeros ([query_size, len(corpus_vecs[0])])              
+            for i in range(query_size):
+                query_vecs[i] = corpus_vecs[query_overload_idxes[i][0]] 
 
-                all_distances = cdist (query_vecs, corpus_vecs_w, metric = 'cosine')                
+            all_distances_origin = cdist (query_vecs, corpus_vecs, metric = 'cosine')                
+            distances = np.zeros ([query_size, query_size])
+
+            for level in range(3):
+                all_distances = copy.deepcopy (all_distances_origin) 
                 distances = np.zeros ([query_size, query_size])
                 for i in range(query_size):                          
                     # set the distance between the query and itself to MAX value
@@ -228,9 +188,9 @@ def main():
                             for k in query_overload_idxes[j]:
                                 dist.append (all_distances[i][k])
                             distances[i][j] = min (dist)
-               
+            
                 # compute rank matrix (query * grd_truth)
-                rank, rr, avep, hit_10, grd_truth_size = calculate_metric(all_distances, distances)
+                rank, rr, avep, hit_10, sort_ranks, grd_truth_size = calculate_metric(all_distances, distances)
                 for i in range(query_size):
                     if rank[i] != corpus_size:
                         results[level].append({
@@ -241,13 +201,14 @@ def main():
                             "RR": rr[i],
                             "AP": avep[i],
                             "hit@10": hit_10[i],
+                            "sort_ranks": sort_ranks[i].tolist(),
                             "ground truth size": grd_truth_size[i],
                             "inner corpus size": len(file_idxes[i]) - len(query_overload_idxes[i]),
                             "outer corpus size": all_distances.shape[1] - len(file_idxes[i]),
                             "repo size": all_distances.shape[1] 
                         })                 
                 results_csv = pd.DataFrame(results[level])
-                write_path = os.path.join('./results/unixcoder/finetune', 'results_' + str(level+1) + '.csv')
+                write_path = os.path.join(args.output_dir, 'results_' + str((level)+1) + '.csv')
                 results_csv.to_csv(write_path, index=False)                             
 
 

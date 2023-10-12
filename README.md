@@ -1,7 +1,13 @@
-# Athena: Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis
+# Athena: Enhancing Code Understanding for Impact Analysis by Combining Transformers and Program Dependence Graphs
 
 ## Introduction
-This is the official codebase for the paper "Combining Call Graphs and Neural Code Semantics to Improve Automated Impact Analysis". In this work, we use three large pre-trained models, namely CodeBERT, GraphCodeBERT and UniXcoder, to obtain the neural semantics of the code and adpot an embedding propogation strategy based on the call graph information to update the code semantics for accurate impact analysis.
+This is the official codebase for the paper "Enhancing Code Understanding for Impact Analysis by
+Combining Transformers and Program Dependence Graphs". In this work, We leverage neural code models including CodeBERT, UniXCoder, and GraphCodeBERT, prominent Transformer-based code models, for initial method embedding extraction. These pre-trained neural code models are fine-tuned on code
+search to learn richer representations that are aware of underlying code intent and potentially
+transferring the additional knowledge learnt from code search to IA. To integrate the global
+dependence information into local code semantics, the initial method embeddings are further
+enhanced using an embedding propagation strategy inspired by graph convolutional networks
+(GCN) [Kipf and Welling 2016] based on the constructed dependence graphs.
 
 ## Dependency
 - CUDA 11.0
@@ -13,13 +19,13 @@ This is the official codebase for the paper "Combining Call Graphs and Neural Co
 ## Installation
 
 ```bash
-git clone https://anonymous.4open.science/r/Athena-6557/
-cd athena
+git clone https://anonymous.4open.science/r/Athena-60D4/
+cd Athena
 pip install -r requirements.txt
 ```
 
 ## Evaluation Benchmark
-To evaluate Athena for the task of impact analysis, we created a large-scale benchmark, called Alexandria, that leverages an existing dataset of fine-grained, manually untangled commit information from bug-fixes. The benchmark consists of 910 commits across 25 open-source Java projects, which we use to construct 4,405 IA tasks. The benchmark is available at https://anonymous.4open.science/r/Athena-6557/dataset/alexandria.csv.
+To evaluate Athena for the task of impact analysis, we created a large-scale benchmark, called Alexandria, that leverages an existing dataset of fine-grained, manually untangled commit information from bug-fixes. The benchmark consists of 910 commits across 25 open-source Java projects, which we use to construct 4,405 IA tasks. The benchmark is available at https://anonymous.4open.science/r/Athena-60D4/dataset/alexandria.csv.
 
 ## Reproduce Results
 
@@ -29,13 +35,9 @@ python main.py \
     --pretrained_model_name=microsoft/graphcodebert-base \
     --finetuned_model_path=./finetuned_models/graphcodebert.bin \
     --lang=java \
-    --output_dir=./results \
-    --version=athena
+    --output_dir=./athena_reproduction_package/results/graphcodebert \
 ```
 
-Our results can be found at https://anonymous.4open.science/r/Athena-6557/results/.
-
-
 ## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet java split. The fine-tuned models will be available soon.
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet Java split. The fine-tuned models will be available soon.
 

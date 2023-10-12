@@ -62,6 +62,19 @@ def remove_comments_and_docstrings(source,lang):
         return '\n'.join(temp)
 
 
+def get_comments(source):
+    pattern = re.compile(
+        r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"',
+        re.DOTALL | re.MULTILINE
+    )
+    temp=[]
+    if re.findall(pattern, source):
+        for x in re.findall(pattern, source):
+            if x.startswith('/'):
+                temp.append(x)
+    return '\n'.join(temp)
+
+
 def tree_to_token_index(root_node):
     if (len(root_node.children)==0 or root_node.type=='string') and root_node.type!='comment':
         return [(root_node.start_point,root_node.end_point)]

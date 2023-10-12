@@ -1,15 +1,18 @@
 import torch
 import numpy as np
+import re
 
 from abc import ABC, abstractmethod
 from torch.utils.data import DataLoader, Dataset, SequentialSampler, TensorDataset
 from parser import DFG_java
 from parser import (remove_comments_and_docstrings,
+                   get_comments,
                    tree_to_token_index,
                    index_to_code_token,
                    tree_to_variable_index)
 from tree_sitter import Language, Parser
 from transformers import (RobertaConfig, RobertaModel, RobertaTokenizer)
+from typing import List, Dict, Any, Set, Optional
 from model import CodeBERTModel, GraphCodeBERTModel, UniXcoderModel
 
 
@@ -82,6 +85,7 @@ class Embed(ABC):
         self.code_length = 256
         self.data_flow_length = 64
         self.batch_size = 128
+        self.flag = 1
         self.finetuned_model_path = finetuned_model_path
 
     @abstractmethod
@@ -103,6 +107,32 @@ class Embed(ABC):
     @abstractmethod
     def extract_corpus_vecs(self):
         pass
+
+    def get_docstring_summary(self, docstring: str) -> str:
+        """Get the first lines of the documentation comment up to the empty lines."""
+        if '\n\n' in docstring:
+            return docstring.split('\n\n')[0]
+        elif '@' in docstring:
+            return docstring[:docstring.find('@')]  # This usually is the start of a JavaDoc-style @param comment.
+        return docstring
+
+    def tokenize_docstring(self, docstring: str) -> List[str]:
+        DOCSTRING_REGEX_TOKENIZER = re.compile(r"[^\s,'\"`.():\[\]=*;>{\}+-/\\]+|\\+|\.+|\(\)|{\}|\[\]|\(+|\)+|:+|\[+|\]+|{+|\}+|=+|\*+|;+|>+|\++|-+|/+")
+        return [t for t in DOCSTRING_REGEX_TOKENIZER.findall(docstring) if t is not None and len(t) > 0]
+
+    def preprocess_docstring(self, docstring, code):
+       
+        if self.flag:
+            comments = get_comments(code)
+            docstring += comments
+        else:
+            docstring = self.get_docstring_summary(docstring).strip()
+
+        docstring = docstring.replace('*', '')
+        docstring = docstring.replace('/', '')
+        docstring = docstring.replace('.', '')
+        docstring = self.tokenize_docstring(docstring)
+        return docstring
 
 
 class EmbedCodebert(Embed):
@@ -134,6 +164,15 @@ class EmbedCodebert(Embed):
         code_ids+=[self.tokenizer.pad_token_id]*padding_length
         return code_ids
 
+    # def convert_examples_to_features(self, code):
+    #     code_tokens = self.preprocess(code)
+    #     code_tokens = self.tokenizer.tokenize(' '.join(code_tokens))
+    #     code_tokens =[self.tokenizer.cls_token,"<encoder-only>",self.tokenizer.sep_token]+code_tokens[:self.code_length-4]+[self.tokenizer.sep_token]
+    #     code_ids = self.tokenizer.convert_tokens_to_ids(code_tokens)
+    #     padding_length = self.code_length - len(code_ids)
+    #     code_ids+=[self.tokenizer.pad_token_id]*padding_length
+    #     return code_ids
+
     def extract_corpus_vecs(self, methods):
         corpus_inputs = []
         for method in methods:
@@ -153,6 +192,58 @@ class EmbedCodebert(Embed):
         corpus_vecs=np.concatenate(corpus_vecs,0)
         return corpus_vecs
 
+
+class EmbedUnixcoder(Embed):
+
+    def load_pretrained_model(self):
+        self.model = UniXcoderModel(self.model)
+        self.model.to(self.device)
+
+    def load_finetuned_model(self):
+        self.load_pretrained_model()
+        model_to_load = self.model.module if hasattr(self.model, 'module') else self.model 
+        model_to_load.load_state_dict(torch.load(self.finetuned_model_path))
+
+    def preprocess(self, code):
+        code=remove_comments_and_docstrings(code,'java')  
+        tree = self.parser[0].parse(bytes(code,'utf8'))    
+        root_node = tree.root_node  
+        tokens_index=tree_to_token_index(root_node)     
+        code=code.split('\n')
+        code_tokens=[index_to_code_token(x,code) for x in tokens_index]
+        code_tokens = [x for x in code_tokens if x]
+        return code_tokens
+    
+    def convert_examples_to_features(self, code):
+        code_tokens = self.preprocess(code)
+        code_tokens = self.tokenizer.tokenize(' '.join(code_tokens))
+        code_tokens =[self.tokenizer.cls_token,"<encoder-only>",self.tokenizer.sep_token]+code_tokens[:self.code_length-4]+[self.tokenizer.sep_token]
+        code_ids = self.tokenizer.convert_tokens_to_ids(code_tokens)
+        padding_length = self.code_length - len(code_ids)
+        code_ids+=[self.tokenizer.pad_token_id]*padding_length
+        return code_ids
+    
+
+    def extract_corpus_vecs(self, methods):
+        corpus_inputs = []
+        for method in methods:
+            corpus_inputs.append(self.convert_examples_to_features(method))
+        corpus_dataset = TensorDataset(torch.tensor(corpus_inputs))
+        corpus_sampler = SequentialSampler(corpus_dataset)
+        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
+        self.model.eval()
+        query_vecs=[] 
+        corpus_vecs=[]
+        for batch in corpus_dataloader:
+            corpus_inputs = batch[0].to(self.device)   
+            with torch.no_grad():
+                corpus_vec= self.model(corpus_inputs)
+                corpus_vecs.append(corpus_vec.cpu().numpy()) 
+        self.model.train()  
+        corpus_vecs=np.concatenate(corpus_vecs,0)
+
+        return corpus_vecs
+        
 
 class EmbedGraphcodebert(Embed):
 
@@ -251,56 +342,112 @@ class EmbedGraphcodebert(Embed):
         return corpus_vecs
 
 
-class EmbedUnixcoder(Embed):
 
-    def load_pretrained_model(self):
-        self.model = UniXcoderModel(self.model)
-        self.model.to(self.device)
 
-    def load_finetuned_model(self):
-        self.load_pretrained_model()
-        model_to_load = self.model.module if hasattr(self.model, 'module') else self.model 
-        model_to_load.load_state_dict(torch.load(self.finetuned_model_path))
 
-    def preprocess(self, code):
-        code=remove_comments_and_docstrings(code,'java')  
-        tree = self.parser[0].parse(bytes(code,'utf8'))    
-        root_node = tree.root_node  
-        tokens_index=tree_to_token_index(root_node)     
-        code=code.split('\n')
-        code_tokens=[index_to_code_token(x,code) for x in tokens_index]
-        code_tokens = [x for x in code_tokens if x]
-        return code_tokens
-    
-    def convert_examples_to_features(self, code):
-        code_tokens = self.preprocess(code)
-        code_tokens = self.tokenizer.tokenize(' '.join(code_tokens))
-        code_tokens =[self.tokenizer.cls_token,"<encoder-only>",self.tokenizer.sep_token]+code_tokens[:self.code_length-4]+[self.tokenizer.sep_token]
-        code_ids = self.tokenizer.convert_tokens_to_ids(code_tokens)
-        padding_length = self.code_length - len(code_ids)
-        code_ids+=[self.tokenizer.pad_token_id]*padding_length
-        return code_ids
-    
 
-    def extract_corpus_vecs(self, methods):
-        corpus_inputs = []
-        for method in methods:
-            corpus_inputs.append(self.convert_examples_to_features(method))
-        corpus_dataset = TensorDataset(torch.tensor(corpus_inputs))
-        corpus_sampler = SequentialSampler(corpus_dataset)
-        corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
-        self.model.eval()
-        query_vecs=[] 
-        corpus_vecs=[]
-        for batch in corpus_dataloader:
-            corpus_inputs = batch[0].to(self.device)   
-            with torch.no_grad():
-                corpus_vec= self.model(corpus_inputs)
-                corpus_vecs.append(corpus_vec.cpu().numpy()) 
-        self.model.train()  
-        corpus_vecs=np.concatenate(corpus_vecs,0)
 
-        return corpus_vecs
+
+
+# class EmbedGraphcodebert(Embed):
+
+#     def load_pretrained_model(self):
+#         self.model = GraphCodeBERTModel(self.model)
+#         self.model.to(self.device)
+
+#     def load_finetuned_model(self):
+#         self.load_pretrained_model()
+#         self.model.load_state_dict(torch.load(self.finetuned_model_path),strict=False)
+ 
+#     def preprocess(self, code):
+#         try:
+#             code=remove_comments_and_docstrings(code,'java')   
+#             tree = self.parser[0].parse(bytes(code,'utf8'))    
+#             root_node = tree.root_node  
+#             tokens_index=tree_to_token_index(root_node)     
+#             code=code.split('\n')
+#             code_tokens=[index_to_code_token(x,code) for x in tokens_index]  
+#             index_to_code={}
+#             for idx,(index,code) in enumerate(zip(tokens_index,code_tokens)):
+#                 index_to_code[index]=(idx,code)  
+#             try:
+#                 DFG,_=self.parser[1](root_node,index_to_code,{}) 
+#             except:
+#                 DFG=[]
+#             DFG=sorted(DFG,key=lambda x:x[1])
+#             indexs=set()
+#             for d in DFG:
+#                 if len(d[-1])!=0:
+#                     indexs.add(d[1])
+#                 for x in d[-1]:
+#                     indexs.add(x)
+#             new_DFG=[]
+#             for d in DFG:
+#                 if d[1] in indexs:
+#                     new_DFG.append(d)
+#             dfg=new_DFG
+#         except:
+#             dfg=[]
+#         return code_tokens,dfg
+
+#     def convert_examples_to_features(self, docstring, code):
+#         #extract data flow 
+#         nl_tokens = self.preprocess_docstring(docstring, code)
+#         if nl_tokens:
+#             nl_tokens = self.tokenizer.tokenize(' '.join(nl_tokens)) + [self.tokenizer.sep_token]
+
+#         code_tokens,dfg=self.preprocess(code)       
+#         code_tokens=[self.tokenizer.tokenize('@ '+x)[1:] if idx!=0 else self.tokenizer.tokenize(x) for idx,x in enumerate(code_tokens)]
+#         ori2cur_pos={}
+#         ori2cur_pos[-1]=(0,0)
+#         for i in range(len(code_tokens)):
+#             ori2cur_pos[i]=(ori2cur_pos[i-1][1],ori2cur_pos[i-1][1]+len(code_tokens[i]))    
+#         code_tokens=[y for x in code_tokens for y in x]  
+#         code_tokens = nl_tokens + code_tokens
+
+#         #truncating
+#         code_tokens=code_tokens[:self.code_length+self.data_flow_length-2-min(len(dfg),self.data_flow_length)]
+#         code_tokens =[self.tokenizer.cls_token]+code_tokens+[self.tokenizer.sep_token]
+#         code_ids =  self.tokenizer.convert_tokens_to_ids(code_tokens)
+#         position_idx = [i+self.tokenizer.pad_token_id + 1 for i in range(len(code_tokens))]
+#         dfg=dfg[:self.code_length+self.data_flow_length-len(code_tokens)]
+#         code_tokens+=[x[0] for x in dfg]
+#         position_idx+=[0 for x in dfg]
+#         code_ids+=[self.tokenizer.unk_token_id for x in dfg]
+#         padding_length=self.code_length+self.data_flow_length-len(code_ids)
+#         position_idx+=[self.tokenizer.pad_token_id]*padding_length
+#         code_ids+=[self.tokenizer.pad_token_id]*padding_length    
+#         #reindex
+#         reverse_index={}
+#         for idx,x in enumerate(dfg):
+#             reverse_index[x[1]]=idx
+#         for idx,x in enumerate(dfg):
+#             dfg[idx]=x[:-1]+([reverse_index[i] for i in x[-1] if i in reverse_index],)    
+#         dfg_to_dfg=[x[-1] for x in dfg]
+#         dfg_to_code=[ori2cur_pos[x[1]] for x in dfg]
+#         length=len([self.tokenizer.cls_token])+len(nl_tokens)
+#         dfg_to_code=[(x[0]+length,x[1]+length) for x in dfg_to_code]          
         
+#         return InputFeatures(code_tokens,code_ids,position_idx,dfg_to_code,dfg_to_dfg)
+    
+#     def extract_corpus_vecs(self, docstrings, methods):
+#         examples = []
+#         for i in range(len(methods)):
+#             examples.append(self.convert_examples_to_features(docstrings[i], methods[i]))
 
+#         corpus_dataset=TextDataset(examples, self.code_length, self.data_flow_length)
+#         corpus_sampler = SequentialSampler(corpus_dataset)
+#         corpus_dataloader = DataLoader(corpus_dataset, sampler=corpus_sampler, batch_size=self.batch_size,num_workers=4)
 
+#         self.model.eval() 
+#         corpus_vecs=[]
+#         for batch in corpus_dataloader:
+#             corpus_inputs = batch[0].to(self.device)
+#             attn_mask = batch[1].to(self.device)
+#             position_idx =batch[2].to(self.device)   
+#             with torch.no_grad():
+#                 corpus_vec= self.model(code_inputs=corpus_inputs, attn_mask=attn_mask,position_idx=position_idx)
+#                 corpus_vecs.append(corpus_vec.cpu().numpy()) 
+#         self.model.train() 
+#         corpus_vecs=np.concatenate(corpus_vecs,0)
+#         return corpus_vecs

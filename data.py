@@ -24,7 +24,7 @@ class SoftwareRepo:
         g.clean(force=True, d=True)
 
         # Get the edges for the repo, both call graph and class graph
-        self.method_df, self.call_edge_df = gg.parse_directory(str(self.repo_dir))
+        self.method_df, self.call_edge_df = gg.parse_directory(str(self.repo_dir), include_docstring = True)
         self.call_edge_df.rename(
             columns={
                 "callee_index": "from_id",

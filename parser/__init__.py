@@ -1,6 +1,7 @@
 # From: https://github.com/microsoft/CodeBERT/tree/master/GraphCodeBERT/codesearch/parser
 
 from .utils import (remove_comments_and_docstrings,
+                   get_comments,
                    tree_to_token_index,
                    index_to_code_token,
                    tree_to_variable_index)
