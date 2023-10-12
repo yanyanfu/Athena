@@ -9,6 +9,12 @@ dependence information into local code semantics, the initial method embeddings 
 enhanced using an embedding propagation strategy inspired by graph convolutional networks
 (GCN) [Kipf and Welling 2016] based on the constructed dependence graphs.
 
+
+## Baseline
+Typical IA techniques require a seed/starting entity to perform the analysis. Although the latest conceptual IA technique [Wang et al. 2018](https://pdfs.semanticscholar.org/9a5a/097f704dff272f32568ec7dc9608b5859972.pdf) starts with the change request in natural language form, we starts with the code entity to perform IA following most of existing IA techniques [Kagdi et al. 2013](https://www.cs.wm.edu/~denys/pubs/EMSE-MSR&IR-IA-Preprint.pdf);  [Cai et al. 2016](https://dl.acm.org/doi/10.1145/2894751); [Gyori et al. 2017](https://dl.acm.org/doi/10.1145/3092703.3092719); [Liu et al. 2018](https://onlinelibrary.wiley.com/doi/10.1002/smr.1960). Given that [Wang et al. 2018]
+has not made their implementation publicly available, we directly use LSI and doc2vec (used in their paper) independently as conceptual IA baselines and evaluate these two models on our untangled benchmark Alexandria. Also, LSI is the most commonly used model for obtaining code semantics for existing conceptual IA techniques.
+
+
 ## Dependency
 - CUDA 11.0
 - python 3.7
