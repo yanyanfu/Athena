@@ -11,8 +11,8 @@ enhanced using an embedding propagation strategy inspired by graph convolutional
 
 
 ## Baseline
-Typical IA techniques require a seed/starting entity to perform the analysis. **Although the latest conceptual IA technique [Wang et al. 2018](https://pdfs.semanticscholar.org/9a5a/097f704dff272f32568ec7dc9608b5859972.pdf) starts with the change request in natural language form, we starts with the code entity to perform IA following many existing IA techniques [Kagdi et al. 2013](https://www.cs.wm.edu/~denys/pubs/EMSE-MSR&IR-IA-Preprint.pdf);  [Cai et al. 2016](https://dl.acm.org/doi/10.1145/2894751); [Gyori et al. 2017](https://dl.acm.org/doi/10.1145/3092703.3092719); [Liu et al. 2018](https://onlinelibrary.wiley.com/doi/10.1002/smr.1960)**. Given that [Wang et al. 2018](https://pdfs.semanticscholar.org/9a5a/097f704dff272f32568ec7dc9608b5859972.pdf)
-has not made their implementation publicly available, we directly use LSI and doc2vec (used in their paper) independently as conceptual IA baselines and evaluate these two models on our untangled benchmark Alexandria. Also, LSI is the most commonly used model for obtaining code semantics for existing conceptual IA techniques.
+Typical IA techniques require a seed/starting entity to perform the analysis. **Although the latest conceptual IA technique [Wang et al. 2018](https://pdfs.semanticscholar.org/9a5a/097f704dff272f32568ec7dc9608b5859972.pdf) starts with the change request in natural language form, we starts with the code entity to perform IA following many existing IA techniques [Kagdi et al. 2013](https://www.cs.wm.edu/~denys/pubs/EMSE-MSR&IR-IA-Preprint.pdf);  [Cai et al. 2016](https://dl.acm.org/doi/10.1145/2894751); [Gyori et al. 2017](https://dl.acm.org/doi/10.1145/3092703.3092719); [Liu et al. 2018](https://onlinelibrary.wiley.com/doi/10.1002/smr.1960)**. **Given that [Wang et al. 2018](https://pdfs.semanticscholar.org/9a5a/097f704dff272f32568ec7dc9608b5859972.pdf)
+has not made their implementation and benchmark publicly available**, we directly use LSI and doc2vec (used in their paper) independently as conceptual IA baselines and evaluate these two models on our untangled benchmark Alexandria. Also, LSI is the most commonly used model for obtaining code semantics for existing conceptual IA techniques.
 
 
 ## Dependency
@@ -45,5 +45,5 @@ python main_multi.py \
 ```
 
 ## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet Java split. The fine-tuned models will be available soon.
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet Java split. The fine-tuned models are available at https://drive.google.com/drive/folders/1b7xkAA5XWSY2io6smAk-c7PeTdxt5I5a?usp=drive_link (anonymously)..
 
