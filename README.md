@@ -25,7 +25,7 @@ has not made their implementation and benchmark publicly available**, we directl
 ## Installation
 
 ```bash
-git clone https://anonymous.4open.science/r/Athena-60D4/
+git clone https://github.com/yanyanfu/Athena.git
 cd Athena
 pip install -r requirements.txt
 ```
@@ -45,5 +45,5 @@ python main_multi.py \
 ```
 
 ## Fine-tuned models
-The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet Java split. The fine-tuned models are available at https://drive.google.com/drive/folders/1b7xkAA5XWSY2io6smAk-c7PeTdxt5I5a?usp=drive_link (anonymously).
+The code search task is used as the proxy for the impact analysis. Specifically, we fine-tune the pre-trained models for code search based on the dataset of CodeSearchNet Java split. The fine-tuned models are available at https://drive.google.com/drive/folders/1b7xkAA5XWSY2io6smAk-c7PeTdxt5I5a?usp=drive_link.
 
