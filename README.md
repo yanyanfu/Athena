@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ```
 
 ## Evaluation Benchmark
-To evaluate Athena for the task of impact analysis, we created a large-scale benchmark, called Alexandria, that leverages an existing dataset of fine-grained, manually untangled commit information from bug-fixes. The benchmark consists of 910 commits across 25 open-source Java projects, which we use to construct 4,405 IA tasks. The benchmark is available at https://anonymous.4open.science/r/Athena-60D4/dataset/alexandria.csv.
+To evaluate Athena for the task of impact analysis, we created a large-scale benchmark, called Alexandria, that leverages an existing dataset of fine-grained, manually untangled commit information from bug-fixes. The benchmark consists of 910 commits across 25 open-source Java projects, which we use to construct 4,405 IA tasks. The benchmark is available at dataset/alexandria.csv.
 
 ## Reproduce Results
 
